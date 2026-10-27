@@ -1,0 +1,100 @@
+# readboe copyright and source-data notice
+
+## Package software
+
+The `readboe` package software, build scripts, tests, synthetic test
+fixtures, and package-authored documentation are copyright © 2026 Chartwell Macro and
+are licensed under the MIT License; see the top-level `LICENSE` file. The
+`cph` entry for Chartwell Macro in `DESCRIPTION` covers this
+package-authored software. It does not relicense source material obtained from
+the Bank of England or other third parties.
+
+`readboe` is an independent client. It is not endorsed by, affiliated with,
+or sponsored by the Bank of England. Links to Bank of England pages are
+provided for source attribution and terms verification only.
+
+## Bundled Bank-derived metadata
+
+The source files under `inst/extdata/` (installed under `extdata/`) include
+a pinned catalogue, metadata, and provenance receipts derived from Bank of
+England Database and statistics pages. They are source data and metadata, not
+package-authored software. The MIT
+licence for `readboe` software does not by itself relicense these materials.
+Reuse must follow the Bank of England's applicable terms and any third-party
+terms; preserve the source URLs, provenance hashes, and this notice when
+redistributing them.
+
+The Bank's [legal terms](https://www.bankofengland.co.uk/legal) state that
+Database information is copyright of the Governor and Company of the Bank of
+England unless otherwise stated and that reproduction of Database data is
+subject to the UK Open Government Licence (OGL). The same terms exclude
+selected exchange-rate data and series reproduced under third-party licences.
+The catalogue does not contain a licence field and cannot identify which
+exchange-rate records fall within that exclusion; verify the applicable terms
+before reproducing or redistributing those records.
+
+The Bank's legal terms also state that data relating to monetary financial
+institutions in the Isle of Man, Guernsey, and Jersey is respectively the
+copyright of the Isle of Man Treasury, Guernsey Financial Services Commission,
+and Jersey Financial Services Commission, and is made available under licence
+from the relevant institution. Do not represent those records as MIT- or
+OGL-licensed without confirmation of the applicable component terms.
+
+## Documentation SONIA replay fixture
+
+The cache entry and manifest under
+`inst/extdata/sonia/` contain the official monthly
+SONIA IADB response for series `IUMASOIA`, covering 31 January 1997 through
+31 December 2025. They are bundled solely to make the documented public-reader
+and chart workflow deterministic and offline. The manifest records the exact
+canonical request, retrieval time, byte count, and SHA-256 response hash.
+These files are Bank of England Database data, not MIT-licensed package code,
+and carry the SONIA attribution below.
+
+## SONIA attribution
+
+For SONIA and SONIA Compounded Index material, retain the following
+attribution statement prescribed by the Bank of England's legal terms:
+
+> SONIA and/or SONIA Compounded Index data licensed under the Open Government Licence v3.0 and copyright the Governor and Company of the Bank of England.
+> The trade marks “Bank of England” and “SONIA” are registered trade marks of the Bank of England.
+
+This statement applies to SONIA material under the stated terms; it is not a
+licence for other bundled data.
+
+## Structured Inflation Report and Monetary Policy Report observations
+
+`inst/extdata/mpr-forecasts.rds` contains pre-extracted official forecast
+observations, classifications and source receipts. The paired manifest
+records the snapshot hash. These values are derived from the Bank's report
+Resources, and retain original source URLs, revision hashes and applicable
+third-party provenance. They are not package-authored software and are not
+relicensed by MIT. The Database OGL must not be assumed to cover report
+Resources or third-party inputs. The publisher has confirmed permission to redistribute this bundled snapshot.
+This does not grant a blanket licence for other uses or third-party material;
+consult the [Bank's current legal terms](https://www.bankofengland.co.uk/legal)
+and the exact source notices for any proposed reuse.
+
+This forecast bundle contains structured values and provenance, without raw
+report PDFs, HTML, XLS/XLSX or ZIP publications. Explicit updates use bounded
+temporary source staging and remove owned bodies before releasing the writer
+lock by default; source retention requires an explicit opt-in.
+
+## Runtime-downloaded assets and other third-party material
+
+`readboe` can retrieve Bankstats workbooks, Bank Rate files, fitted
+yield-curve files, and other official release assets at runtime. Those raw
+assets are not bundled in this source tree. Users must follow the terms,
+attribution, and third-party restrictions stated by each relevant Bank source
+page. The Bank's [yield-curve methodology and terminology
+page](https://www.bankofengland.co.uk/statistics/yield-curves/terminology-and-concepts)
+acknowledges underlying data providers including Bloomberg, the Gilt-Edged
+Market Makers' Association, Reuters, Tradeweb, and the UK Debt Management
+Office. No broader OGL or MIT grant should be inferred for those assets.
+
+The Bank also acknowledges other institutions that provide or permit the
+reprinting of material. Where a Bank resource contains third-party copyright,
+rights remain with the originating organisation and reuse is subject to the
+relevant third party's approval. Consult the [Bank Database
+help](https://www.bankofengland.co.uk/boeapps/database/Help.asp?Highlight=Hierarchy&Travel=)
+and the source page for the exact series or asset before reuse.

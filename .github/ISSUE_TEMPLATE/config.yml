@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and issue reports
+    url: mailto:chartwellmacro@gmail.com
+    about: Email support, bug reports, feature requests, or security concerns.

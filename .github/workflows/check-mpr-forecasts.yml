@@ -1,0 +1,32 @@
+name: Check forecast report revisions
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: forecast-source-check
+  cancel-in-progress: false
+jobs:
+  check-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+      - name: Install PDF extraction dependency on the disposable runner
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Install this checkout into a temporary test library
+        run: |
+          mkdir -p "$RUNNER_TEMP/readboe-lib"
+          R CMD INSTALL --library="$RUNNER_TEMP/readboe-lib" .
+      - name: Check additions, changed links and revised bytes
+        env:
+          R_LIBS: ${{ runner.temp }}/readboe-lib
+        run: Rscript inst/scripts/update-mpr-forecasts.R --data-dir "$RUNNER_TEMP/readboe-forecasts" --deadline 3600
+      # No data upload, auto-commit, PR, release, publication or OS job setup.
+      # Consumers refresh their own data_dir using the same installed entry point.

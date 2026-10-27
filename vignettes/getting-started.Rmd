@@ -1,0 +1,285 @@
+---
+title: "Getting started with readboe"
+author: "Chartwell Macro"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with readboe}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 4,
+  out.width = "100%"
+)
+```
+
+`readboe` helps R users discover and retrieve official Bank of England
+statistical data while retaining the identifiers, raw values, revision fields,
+and source receipts needed to reproduce a result. It is intended for analysts,
+researchers, and data pipelines that need an explicit contract around official
+data and reproducible provenance.
+
+## Coverage at a glance
+
+The bundled discovery snapshot was generated on 3 August 2026. It covers five
+related source families:
+
+* **IADB series and revisions:** direct retrieval of known identities, plus
+  5,252 validated Bankstats identities across 60 current tables for offline
+  discovery. Their series-specific canonical bounds collectively reach from
+  June 1969 to July 2026.
+* **Bankstats catalogue and bulk workbooks:** 64 current workbook members;
+  5,008 catalogue identities have exact current-workbook cells and 244 use
+  canonical full IADB history only.
+* **Official Bank Rate history and fixed rate identities:** the change history
+  begins in October 1694, alongside five fixed daily/monthly/annual Bank Rate
+  and SONIA identities whose IADB histories begin in 1975 or 1997.
+* **Fitted yield curves:** 11 latest/archive identities across nominal, real,
+  inflation, OIS, and discontinued BLC daily/monthly families; nominal monthly
+  coverage begins in 1970 and later starts depend on the curve family.
+* **Statistical and research release families:** 14 offline registry entries;
+  exact asset workflows require the verified snapshot described under
+  [Scope and limitations](#scope-and-limitations).
+
+The Bankstats subjects include money and lending, monetary-financial-
+institution balance sheets and income, deposits and lending, rates and
+exchange rates, public-sector debt and money markets, capital issuance, and
+financial derivatives. See [Coverage and source map](data-sources.html#coverage-and-source-map)
+for the definitive function/source mapping and snapshot boundaries.
+
+Catalogue and registry discovery are offline-first. Observation and asset
+readers use HTTPS connections to allowlisted Bank of England hosts. The package
+requires no Bank API key; upstream availability, rate limits, and source terms
+still apply.
+
+## Installation
+
+The development version can be installed from GitHub:
+
+```{r install-github, eval=FALSE}
+install.packages("pak")
+pak::pak("chartwell-macro/readboe")
+```
+
+The public GitHub repository requires no authentication for installation. No Bank of England API key or login is
+collected by the package.
+
+When a released version is accepted by CRAN, the installation will be:
+
+```{r install-cran, eval=FALSE}
+install.packages("readboe")
+```
+
+## First success: discover an exact series offline
+
+Start with the bundled Bankstats catalogue. This offline call reads the
+authenticated snapshot and leaves the managed response cache unchanged.
+Searches are case-insensitive implicit-AND matches over the documented identity
+and label fields; the returned rows remain in snapshot order.
+
+```{r first-success}
+library(readboe)
+
+sonia <- boe_catalogue(query = "SONIA", limit = 1L)
+stopifnot(is.data.frame(sonia), nrow(sonia) <= 1L)
+
+sonia[, c(
+  "series_id", "displayed_code", "label", "frequency",
+  "first_observation", "last_observation", "surface_membership"
+)]
+```
+
+The identifier in `series_id` is the exact official IADB identity. Keep it in
+your own analysis metadata and pass it unchanged to a reader. The result also
+has a `boe_catalogue_provenance` attribute describing the snapshot hash, path,
+and the number of rows matched before `limit` was applied. The stable fields
+can be printed without embedding the installation-specific snapshot path:
+
+```{r catalogue-provenance}
+catalogue_provenance <- attr(sonia, "boe_catalogue_provenance")
+catalogue_provenance[c("snapshot_sha256", "matched_before_cap", "returned")]
+```
+
+For a compact list of well-known policy and benchmark series, use the static
+registry. It is also available without network access:
+
+```{r rate-registry}
+boe_rate_series()
+```
+
+The snapshot is the discovery authority for the Bankstats page represented by
+the package. For an identifier documented by another official source, pass
+that exact identifier directly; identities outside the snapshot remain outside
+catalogue search results.
+
+## Retrieve and chart a time series
+
+This example discovers the official monthly SONIA identity, retrieves a fixed
+IADB XML window through `read_boe_series()`, selects the real `date` and
+`value` columns, and produces a line chart. Documentation rendering uses an
+installed verified replay of the same request, so the article remains fully
+offline while exercising the public cache validation and XML parser.
+
+```{r sonia-replay-setup, include=FALSE}
+fixture_dir <- system.file(
+  "extdata", "sonia",
+  package = "readboe", mustWork = TRUE
+)
+fixture_file <- list.files(
+  fixture_dir,
+  pattern = "^[0-9a-f]{64}\\.rds$",
+  full.names = TRUE
+)
+cache_dir <- tempfile("readboe-vignette-cache-")
+dir.create(cache_dir)
+copied <- file.copy(fixture_file, cache_dir)
+stopifnot(length(fixture_file) == 1L, isTRUE(copied))
+
+monthly_sonia <- boe_catalogue(
+  query = "SONIA",
+  frequency = "Monthly",
+  limit = 1L
+)
+sonia_history <- read_boe_series(
+  series_id = monthly_sonia$series_id[[1L]],
+  from = "1997-01-31",
+  to = "2025-12-31",
+  format = "xml",
+  cache_only = TRUE,
+  cache_dir = cache_dir
+)
+chart_data <- sonia_history$observations[
+  !is.na(sonia_history$observations$date) &
+    !is.na(sonia_history$observations$value),
+  c("date", "value")
+]
+stopifnot(
+  nrow(monthly_sonia) == 1L,
+  monthly_sonia$series_id[[1L]] == "IUMASOIA"
+)
+unlink(cache_dir, recursive = TRUE)
+```
+
+```{r sonia-data-vignette, eval=FALSE}
+monthly_sonia <- boe_catalogue(
+  query = "SONIA",
+  frequency = "Monthly",
+  limit = 1L
+)
+
+sonia_history <- read_boe_series(
+  series_id = monthly_sonia$series_id[[1L]],
+  from = "1997-01-31",
+  to = "2025-12-31",
+  format = "xml",
+  deadline = boe_deadline(30)
+)
+chart_data <- sonia_history$observations[
+  !is.na(sonia_history$observations$date) &
+    !is.na(sonia_history$observations$value),
+  c("date", "value")
+]
+
+monthly_sonia[c("series_id", "label", "frequency")]
+utils::head(chart_data, 3L)
+```
+
+```{r sonia-chart-vignette, fig.alt="Line chart of 348 monthly average SONIA observations from January 1997 through December 2025, showing the pre-2009 cycle, the long low-rate period, the rise after 2021, and subsequent easing.", fig.cap="Monthly average SONIA, January 1997 to December 2025, from the verified official IADB replay."}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(
+    chart_data,
+    ggplot2::aes(x = date, y = value)
+  ) +
+    ggplot2::geom_line() +
+    ggplot2::labs(
+      title = "Monthly average SONIA, 1997–2025",
+      subtitle = "Monthly published observations",
+      x = "Month",
+      y = "Rate (per cent)",
+      caption = "Source: Bank of England IADB via readboe"
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+```
+
+With `format = "xml"`, the return value is a `boe_iadb` object: a named list
+with `metadata` and `observations` data frames. The metadata keeps the official
+series label, frequency, category fields, definitions, and comments. The
+observations data frame includes `series_id`, `date`, the raw value columns,
+numeric companion columns, provisional values, confidentiality markers,
+revision timestamps, observation comments, and source row numbers. Dates are
+`Date` values; missing or suppressed raw markers remain explicit.
+
+`format = "csv"` provides the compatibility observation table; XML additionally
+supports update filtering and observation footnotes. Both formats carry a
+`boe_provenance` attribute on successful retrieval. That list records the
+canonical and final URLs, retrieval time, raw byte count and SHA-256 hash,
+HTTP validators when present, whether the response came from cache, the source
+identity, transformations, and the package version. For a fresh bounded
+request, use the visible `read_boe_series()` call; documentation rendering
+uses the installed verified replay described below.
+
+The replay contains 348 monthly observations from 31 January 1997 through
+31 December 2025. Its 43,319-byte response was retrieved on 25 August 2026
+with SHA-256
+`3e1baa084a68d9e98e5ca01fabe3bf113c933f4e0cf530ebd99e7ac1b89ddfa0`.
+The Bank [reformed SONIA on 23 April 2018](https://www.bankofengland.co.uk/news/2018/april/sonia-interest-rate-benchmark-reform),
+so compare the earlier and later portions with that methodology change in
+mind. `readboe` preserves the observations under their official identity; it
+does not splice or transform the series.
+SONIA and/or SONIA Compounded Index data licensed under the Open Government
+Licence v3.0 and copyright the Governor and Company of the Bank of England.
+The trade marks “Bank of England” and “SONIA” are registered trade marks of
+the Bank of England.
+
+## Browse Bankstats and yield-curve files
+
+Discovery of exact file identities is offline. Use the resulting URL as the
+input to the corresponding reader so the package can preserve its identity and
+provenance checks.
+
+```{r file-registries}
+bankstats <- boe_bankstats_assets(limit = 1L)
+bankstats[, c("table_label", "url", "file_type", "archive", "member_count")]
+
+yields <- boe_yield_assets()
+yields[, c("asset_id", "scope", "curve", "frequency", "archive_revisable")]
+```
+
+`read_boe_bankstats()` returns named worksheet data frames and preserves the
+worksheet cells and source coordinates while leaving header interpretation,
+aggregation, NA dropping, and duplicate handling explicit for downstream code.
+`read_boe_bankstats_series()` joins an exact series identity
+to either its full canonical IADB history or the shorter current workbook
+window. `read_boe_yield_curve()` returns a long data frame retaining raw and
+numeric rate values and the source member, sheet, row, and column coordinates.
+All three readers impose explicit byte, archive, workbook, and output bounds.
+
+## Scope and limitations
+
+The bundled catalogue covers the authenticated Bankstats page represented by
+its manifest. A known official IADB identifier can also be requested directly.
+The release-family registry is available offline; exact release-asset discovery
+and reading become available after a verified pinned `release-assets.rds`
+snapshot is supplied. Current-workbook readers represent the rolling workbook
+window, while canonical IADB readers provide the full-history route. See the
+troubleshooting article for typed failures and remediation paths.
+
+## Where to go next
+
+* [Data sources, snapshots, and provenance](data-sources.html) explains the
+  source families, snapshot scope, cache lifecycle, and reuse notices.
+* [Troubleshooting and integration](troubleshooting.html) shows deterministic
+  preflight checks, typed conditions, and a cache-first pipeline pattern.
+* The function reference documents the precise columns, attributes, bounds,
+  and side effects for each reader.
+
+The Bank's data and website terms remain authoritative. See `boe_rights()` and
+retain the relevant source links and notices with any derived dataset.

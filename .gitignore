@@ -1,0 +1,14 @@
+.Rhistory
+.RData
+.Rproj.user
+*.Rcheck/
+*.tar.gz
+*.Rproj
+README_cache/
+README_files/
+vignettes/*_cache/
+vignettes/*_files/
+pkgdown/
+site/
+.DS_Store
+docs/audits/*/batches/

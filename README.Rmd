@@ -1,0 +1,616 @@
+---
+title: "readboe"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+    html_preview: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE
+)
+```
+
+`readboe` is an independent R client for discovering, retrieving, parsing, and
+auditing official Bank of England statistical data. It is designed for
+analysts who need faithful observations and for applications that need
+bounded requests, stable schemas, and replayable provenance.
+
+A typical workflow is short and explicit:
+
+1. browse the bundled, hash-authenticated catalogue to find an exact current
+   Bankstats identity;
+2. request canonical IADB XML history (or the shorter current workbook view);
+3. retain raw values, official missing/suppression markers, revisions, and
+   source coordinates; and
+4. carry the attached provenance receipt into a report or downstream system.
+
+## Coverage at a glance
+
+The bundled discovery snapshot was generated on 3 August 2026. These counts
+and ranges describe that audited snapshot; live readers can return later
+official revisions and observations.
+
+| Source family | Data covered | Historical reach and boundary |
+|:--|:--|:--|
+| Bankstats catalogue and IADB series | 5,252 exact, IADB-validated series across 60 current Bankstats tables. Topics include money and lending; monetary-financial-institution balance sheets, income, deposits, and lending; interest and exchange rates; public-sector debt and money-market operations; capital issuance; and financial derivatives. The snapshot contains 4,355 monthly, 845 quarterly, 21 annual, 21 weekly, and 10 daily series. | Every row has canonical bounds. Across the snapshot, first observations reach June 1969 and last observations reach July 2026; each series has its own range. A known official IADB identity outside this browse scope can be supplied directly to `read_boe_series()`. |
+| Current Bankstats workbooks | One current bulk ZIP with 64 workbook members. Of the catalogue identities, 5,008 have an exact current-workbook cell and 244 use canonical IADB history only. | Workbook mode is a rolling current-publication window. `history = "full"` uses canonical IADB history; the official page exposes no dated bulk-ZIP archive. |
+| Official Bank Rate history and fixed rate identities | The official Bank Rate change workbook plus five fixed IADB identities: daily and monthly Bank Rate, and daily, monthly, and annual SONIA. | The Bank Rate workbook begins in October 1694; its first 17 records have month-only precision. Current IADB metadata begins in 1975 for Bank Rate and 1997 for SONIA. |
+| Fitted yield curves | 11 registered files: the latest daily bundle and daily/monthly archives for nominal, real, inflation, OIS, and discontinued BLC curves. | Nominal monthly data begin in 1970; nominal daily and real/inflation monthly in 1979; real/inflation daily in 1985; OIS in 2009; BLC ends in 2021. Official archives may be revised. |
+| Statistical and research releases | An offline registry names 14 release families, including GDP real-time, payments, banknotes, reserves, mortgage, capital issuance, credit-union, insurance, and external-position data. | Version 0.2.0 does not bundle the verified asset snapshot needed for exact release-file discovery. The registry is available, but those exact asset readers remain inactive. |
+| Inflation Report and Monetary Policy Report forecasts | Authenticated saved observations, scenarios, conditioning paths and published distributions; explicit raw reproduction and calendar-aware maintenance. | 135 published editions from 1993 through July 2026: 115 numeric outcomes, 20 evidenced absences and 149,526 history-inclusive observations. Source receipts and exact annual/quarterly meanings are retained; upcoming dates are discovered separately. |
+
+See [Coverage and supported workflows](#coverage-and-supported-workflows) for
+the function map and [Data sources, snapshots, and provenance](https://github.com/chartwell-macro/readboe/blob/main/vignettes/data-sources.Rmd)
+for the reproducibility boundaries behind these figures.
+
+## Status and installation
+
+The current `readboe` development release is distributed from GitHub (see
+[`DESCRIPTION`](https://github.com/chartwell-macro/readboe/blob/main/DESCRIPTION) for
+the current version). CRAN installation will become available after a release
+is accepted; until then, install the development version with either command
+below.
+
+Install the current GitHub version with either of these commands:
+
+```r
+# Recommended for a reproducible dependency installation
+install.packages("pak")
+pak::pak("chartwell-macro/readboe")
+
+# Alternative
+# install.packages("remotes")
+# remotes::install_github("chartwell-macro/readboe")
+```
+
+The package uses documented official HTTPS endpoints and requires no Bank API
+key or login. The public GitHub repository requires no authentication for installation.
+Catalogue and registry discovery are available offline immediately after
+installation; readers and downloads use the network for fresh responses and
+the managed cache for replay.
+
+## First success: discover a real series offline
+
+The catalogue snapshot bundled with this source was generated on 2026-08-03.
+This offline code exercises the public API against the real authenticated
+snapshot shipped in `inst/extdata/`:
+
+```{r first-success}
+library(readboe)
+
+notes_and_coin <- boe_catalogue(series_id = "LPMAVAB", limit = 1)
+notes_and_coin[
+  c("series_id", "frequency", "first_observation",
+    "last_observation", "chartable")
+]
+```
+
+The returned object is an ordinary data frame with 37 columns and a
+`boe_catalogue_provenance` attribute. Its result is stable because the bundled
+snapshot is authenticated against its manifest. Search and facet operations
+are also offline:
+
+```{r offline-facets}
+boe_catalogue(
+  query = '"notes and coin"',
+  table_id = "A1.1.1",
+  surface_membership = "bankstats_current",
+  limit = 3
+)[c("series_id", "frequency", "chartable")]
+
+boe_catalogue_facets(query = "mortgage rate")$frequency
+```
+
+## Retrieve and chart a time series
+
+This complete workflow discovers monthly SONIA, retrieves a fixed IADB XML
+window through the public reader, selects the real `date` and `value` columns,
+and draws a line chart. Documentation rendering uses an installed verified
+replay of the same request, so the figure builds offline while exercising the
+public cache validation and XML parser.
+
+```{r sonia-replay-setup, include=FALSE}
+fixture_dir <- system.file(
+  "extdata", "sonia",
+  package = "readboe", mustWork = TRUE
+)
+fixture_file <- list.files(
+  fixture_dir,
+  pattern = "^[0-9a-f]{64}\\.rds$",
+  full.names = TRUE
+)
+cache_dir <- tempfile("readboe-documentation-cache-")
+dir.create(cache_dir)
+copied <- file.copy(fixture_file, cache_dir)
+stopifnot(length(fixture_file) == 1L, isTRUE(copied))
+
+sonia <- boe_catalogue(query = "SONIA", frequency = "Monthly", limit = 1L)
+sonia_history <- read_boe_series(
+  series_id = sonia$series_id[[1L]],
+  from = "1997-01-31",
+  to = "2025-12-31",
+  format = "xml",
+  cache_only = TRUE,
+  cache_dir = cache_dir
+)
+chart_data <- sonia_history$observations[
+  !is.na(sonia_history$observations$date) &
+    !is.na(sonia_history$observations$value),
+  c("date", "value")
+]
+stopifnot(nrow(sonia) == 1L, sonia$series_id[[1L]] == "IUMASOIA")
+unlink(cache_dir, recursive = TRUE)
+```
+
+```{r sonia-data, eval=FALSE}
+sonia <- boe_catalogue(query = "SONIA", frequency = "Monthly", limit = 1L)
+
+sonia_history <- read_boe_series(
+  series_id = sonia$series_id[[1L]],
+  from = "1997-01-31",
+  to = "2025-12-31",
+  format = "xml",
+  deadline = boe_deadline(30)
+)
+chart_data <- sonia_history$observations[
+  !is.na(sonia_history$observations$date) &
+    !is.na(sonia_history$observations$value),
+  c("date", "value")
+]
+
+sonia[c("series_id", "label", "frequency")]
+utils::head(chart_data, 3L)
+```
+
+```{r sonia-chart, fig.path="man/figures/", fig.width=7, fig.height=4, dpi=144, out.width="100%", fig.alt="Line chart of 348 monthly average SONIA observations from January 1997 through December 2025, showing the pre-2009 cycle, the long low-rate period, the rise after 2021, and subsequent easing.", fig.cap="Monthly average SONIA, January 1997 to December 2025, from the verified official IADB replay."}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(
+    chart_data,
+    ggplot2::aes(x = date, y = value)
+  ) +
+    ggplot2::geom_line() +
+    ggplot2::labs(
+      title = "Monthly average SONIA, 1997–2025",
+      subtitle = "Monthly published observations",
+      x = "Month",
+      y = "Rate (per cent)",
+      caption = "Source: Bank of England IADB via readboe"
+    ) +
+    ggplot2::theme_minimal(base_size = 13)
+}
+```
+
+The visible call makes a bounded fresh request and uses the normal managed
+cache. The installed documentation replay follows the catalogue's first
+observation through a fixed complete-year endpoint: 348 monthly observations
+from 31 January 1997 through 31 December 2025. It was retrieved on 25 August
+2026, contains 43,319 bytes, and has SHA-256
+`3e1baa084a68d9e98e5ca01fabe3bf113c933f4e0cf530ebd99e7ac1b89ddfa0`.
+See the [Getting Started article](https://github.com/chartwell-macro/readboe/blob/main/vignettes/getting-started.Rmd)
+for the output and provenance walkthrough.
+
+The Bank [reformed SONIA on 23 April 2018](https://www.bankofengland.co.uk/news/2018/april/sonia-interest-rate-benchmark-reform),
+so interpret the earlier and later portions with that methodology change in
+mind. The package preserves the published observations under the same official
+series identity and does not splice or transform them.
+
+SONIA and/or SONIA Compounded Index data licensed under the Open Government
+Licence v3.0 and copyright the Governor and Company of the Bank of England.
+The trade marks “Bank of England” and “SONIA” are registered trade marks of
+the Bank of England.
+
+## Coverage and supported workflows
+
+The package separates discovery, source authority, and parsing. This matters
+when a rolling workbook and the canonical database describe the same series
+with different windows.
+
+| Official surface | Discover or read with | Contract and scope |
+|:--|:--|:--|
+| IADB XML | `read_boe_series(format = "xml")`, `boe_series_metadata()`, `boe_series_updates()` | Canonical metadata and observations, provisional values, confidentiality flags, footnotes, and update/revision fields. Up to 300 series per request. |
+| IADB CSV | `read_boe_series(format = "csv")` | Compatibility long data frame retaining raw values, official `..` markers, numeric companions, and source rows. XML additionally carries metadata, footnotes, and VUD fields. |
+| Current Bankstats catalogue | `boe_catalogue()`, `boe_catalogue_facets()`, `boe_catalogue_manifest()`, `boe_catalogue_receipts()` | Pinned current-page discovery snapshot: 5,252 retrievable exact identities from 60 tables, with source hashes, metadata, full-history bounds, and workbook coordinates where available. |
+| Current Bankstats bulk workbook | `boe_bankstats_assets()`, `read_boe_bankstats()`, `read_boe_bankstats_series()` | The current bulk ZIP and 64 workbook members. Exact time-down and time-across cells are retained in the rolling publication window; canonical IADB supplies the full-history route. |
+| Bank Rate and fixed rate identities | `boe_bank_rate_history()`, `boe_rate_series()` | Official Bank Rate changes from 1694, including month-only precision in early rows, plus the fixed IADB identifiers for Bank Rate and SONIA conveniences. |
+| Fitted yield curves | `boe_yield_assets()`, `read_boe_yield_curve()` | Nominal, real, inflation, OIS, and discontinued BLC families at daily/monthly archive frequency, plus the latest daily bundle. Missing values and duplicate observations are retained. |
+| Statistical and research releases | `boe_release_registry()`, `boe_release_assets()`, `read_boe_release_asset()` | An audited offline registry of intended official release families. Exact asset workflows activate when a verified pinned snapshot is present; see [Scope and limitations](#scope-and-limitations). |
+
+The source-facing scope and certification evidence live in
+[`docs/coverage-matrix.csv`](https://github.com/chartwell-macro/readboe/blob/main/docs/coverage-matrix.csv)
+and
+[`docs/source-package-decision.md`](https://github.com/chartwell-macro/readboe/blob/main/docs/source-package-decision.md).
+
+## Monetary Policy Report and Inflation Report forecasts
+
+```r
+boe_mpr_releases(include_upcoming = TRUE)  # Saved full-lineage edition inventory
+boe_mpr_assets("2020-05")                 # Exact official asset URLs
+paths <- boe_mpr_catalogue("2026-07")     # Source-derived path identities
+cpi <- read_boe_mpr_forecasts(
+  "2026-07", measure = "cpi_inflation", frequency = "Q",
+  scenario = c("central", "milder", "adverse", "central_memo"),
+  deadline = boe_deadline(120)
+)
+boe_provenance(cpi)
+```
+
+These ordinary calls use authenticated saved numeric data, reuse loaded tables,
+and need neither network access nor Poppler. The bundled baseline contains
+149,526 observations including history, 115 numeric editions and 20 reports with
+evidenced numeric absence. `latest`, `all` and exact edition selections also use
+any validated local refresh from `READBOE_MPR_DATA_DIR` (or R's user data directory).
+
+```r
+# Explicit maintenance, suitable for an hourly external runner
+boe_mpr_maintain(data_dir = "my-forecasts", deadline = 3600)
+boe_mpr_maintenance_status(data_dir = "my-forecasts")
+read_boe_mpr_forecasts("latest", data_dir = "my-forecasts")
+boe_mpr_snapshot_status(data_dir = "my-forecasts")
+```
+
+New data does not require reinstalling the package. Maintenance refreshes the
+official MPR calendar, checks historical revisions daily, and checks release
+metadata when the next publication is due. It persists the next due time beside
+the saved data, so an hourly runner is cheap between due events. Publication
+clocks come from the official listing and use London daylight-saving rules;
+unknown clocks remain explicitly unknown. The installed script supports
+`--maintain --json` and read-only `--maintenance-status --json` modes.
+
+The underlying `boe_mpr_update()` checks existing asset revisions and changed
+links as well as new reports, then commits a validated complete snapshot
+atomically. Failures retain the last good data and expose the error and retry
+time. Updates temporarily stage source bodies on disk and remove them before
+releasing the writer lock; saved tables, validators and receipts remain. Use
+`retain_raw = TRUE` (CLI `--retain-raw`) only when source-body retention is wanted.
+The package installs no OS job and never runs maintenance during startup
+or ordinary reads. `source = "raw"` explicitly selects discovery and extraction
+for reproduction or rebuilds.
+
+`latest` resolves the newest saved published edition. Historical sources,
+scenario workbooks, printed report tables and exact vintage rows are recognized
+by their structure. Later official historical sources retain their own source
+edition. Source receipts distinguish genuine chart-only absence from acquisition,
+dependency and format failures. Early archive dates retain month precision.
+
+Central forecasts, illustrative scenarios, indicative profiles, comparators,
+constant-rate paths and market conditioning assumptions have separate identities.
+Annual averages and Q4 endpoints remain distinct. Published missing and censored
+values retain raw tokens and bounds. Use `include_distributions = TRUE` for
+explicitly published probability bins and distribution parameters. Historical PDF
+tables require Poppler's `pdftotext` on PATH only during raw extraction or updates.
+
+See [forecast coverage and contracts](https://github.com/chartwell-macro/readboe/blob/main/docs/mpr-forecasts.md) for source formats,
+revision replay, the July 2026 source-label anomaly and verification instructions.
+The [Bank terms](https://www.bankofengland.co.uk/legal) govern applicable MPR
+Resources and third-party inputs; Database OGL terms must not be assumed to apply.
+
+## Output contracts
+
+Readers preserve source identity, raw values, official missing markers,
+revisions, and duplicate observations. Transformations such as aggregation,
+interpolation, seasonal adjustment, gap filling, and row dropping remain the
+caller's responsibility.
+
+### Catalogue and provenance
+
+`boe_catalogue()` returns a 37-column data frame in snapshot order:
+
+```text
+series_id, displayed_code, table_id, table_label, section,
+source_series_url, source_page_url, source_page_sha256, workbook_label,
+workbook_frequency, workbook_first_observation, workbook_last_observation,
+workbook_member, workbook_sheet, workbook_orientation, chartable, status,
+replacement_series_id, discontinued_note, surface_membership, label, country,
+concatenated_label, frequency, frequency_code, frequency_order,
+first_observation, last_observation, definition, definition_url,
+category_name, category_value, category_label, category_order, series_comment,
+metadata_status, latest_period_available
+```
+
+The `boe_catalogue_provenance` attribute records the snapshot hash, normalized
+path, pre-limit match count, and returned count. `boe_catalogue_facets()` is a
+named list of six data frames (`status`, `metadata_status`, `frequency`,
+`table_id`, `section`, and `surface_membership`), each with `facet`, `value`,
+and `n` columns.
+
+### IADB observations
+
+With `format = "xml"`, `read_boe_series()` returns class `boe_iadb`, a list
+with `metadata` and `observations`. Metadata has 16 columns:
+
+```text
+series_id, label, country, concatenated_label, frequency, frequency_code,
+frequency_order, first_observation, last_observation, definition,
+definition_url, category_name, category_value, category_label, category_order,
+series_comment
+```
+
+Observations have 11 columns:
+
+```text
+series_id, date, value_raw, value, provisional_value_raw, provisional_value,
+confidential, last_updated, last_revised, observation_comment, source_row
+```
+
+With `format = "csv"`, the result is a data frame with
+`series_id`, `date`, `value_raw`, `value`, `suppressed`, and `source_row`.
+Both formats carry `boe_provenance(x)`. XML is the canonical route when
+metadata, footnotes, provisional values, or revision filtering matter.
+
+### Bankstats, rates, and yields
+
+`read_boe_bankstats_series(history = "full")` returns class
+`boe_bankstats_series` with 31 columns, including the canonical observation
+fields and exact source coordinates:
+
+```text
+series_id, period, date, date_precision, value, value_status, raw_value,
+unit, seasonal_adjustment, release_date, source_table_id, source_member,
+source_sheet, source_row, source_column, orientation, series_label,
+series_frequency, series_country, concatenated_label, definition,
+category_name, category_value, category_label, series_comment,
+provisional_value_raw, provisional_value, confidential, last_updated,
+last_revised, observation_comment
+```
+
+`history = "current_workbook"` returns the shorter rolling-window form (18
+columns through `series_frequency`) when an exact workbook cell exists. A
+time-across period keeps the official period label and an explicit period-start
+date; the conversion is recorded in provenance.
+
+`boe_bank_rate_history()` returns ten columns:
+`period`, `date`, `date_precision`, `year`, `month`, `day`, `rate_raw`,
+`rate`, `source_sheet`, and `source_row`. Month-only records keep `date = NA`.
+`read_boe_yield_curve()` returns the long eight-column data frame
+`date`, `maturity_years`, `rate_raw`, `rate`, `source_member`, `source_sheet`,
+`source_row`, and `source_column`.
+
+Successful network results carry a `boe_provenance` attribute containing the
+source identity, canonical and final URLs, retrieval time, byte count and
+SHA-256, validators when supplied, cache status, package version, and the
+recorded transforms. Use `boe_provenance(x)` rather than relying on a URL alone.
+
+## Common workflows
+
+### IADB history and revisions
+
+The following bounded live workflow is available for interactive use.
+Documentation rendering uses the verified offline replay above so builds
+remain deterministic.
+
+```{r iadb-workflow, eval=FALSE}
+deadline <- boe_deadline(45)
+
+history <- read_boe_series(
+  "IUDBEDR",
+  from = "2024-01-01",
+  to = "2024-01-31",
+  format = "xml",
+  deadline = deadline,
+  max_bytes = 5 * 1024^2
+)
+
+history$metadata
+history$observations
+boe_provenance(history)
+
+updates <- boe_series_updates(
+  "IUMABEDR",
+  from = "2025-01-01",
+  to = "2025-12-31",
+  updated_since = "latest",
+  deadline = boe_deadline(45)
+)
+```
+
+Use CSV when a downstream system requires a simple compatibility table. Use
+XML when metadata, revision history, or footnotes are part of the analysis.
+
+### Bankstats discovery and extraction
+
+Use the offline catalogue to choose an identity, then choose the canonical
+full-history route or the shorter rolling workbook route:
+
+```{r bankstats-workflow, eval=FALSE}
+asset <- boe_bankstats_assets(table_id = "A1.1.1", limit = 1)
+bulk <- read_boe_bankstats(
+  asset$url[[1]],
+  member = "Latest Tables/TabA1.1.1.xls",
+  deadline = boe_deadline(60)
+)
+
+full <- read_boe_bankstats_series(
+  "LPMAVAB",
+  table_id = "A1.1.1",
+  history = "full",
+  deadline = boe_deadline(60)
+)
+
+current_window <- read_boe_bankstats_series(
+  "LPMAVAB",
+  table_id = "A1.1.1",
+  history = "current_workbook",
+  deadline = boe_deadline(60)
+)
+```
+
+Full history is backed by the canonical IADB bounds and can remain available
+when a series is not chartable in the current workbook. The workbook route
+requires an exact current cell and preserves its member, sheet, row, column,
+and orientation.
+
+### Bank Rate and yield curves
+
+The registries are deterministic and can be inspected without a request. The
+readers below use the official workbooks and ZIP files when called:
+
+```{r rates-yields-workflow, eval=FALSE}
+boe_rate_series()
+bank_rate <- boe_bank_rate_history(deadline = boe_deadline(60))
+
+yield_assets <- boe_yield_assets()
+nominal <- read_boe_yield_curve(
+  curve = "nominal",
+  frequency = "monthly",
+  scope = "archive",
+  measure = "spot",
+  deadline = boe_deadline(180)
+)
+```
+
+Archive files may be revised upstream. The package records the selected asset,
+curve, frequency, scope, measure, segment, member, sheet, and cell identity in
+provenance; it does not turn an official daily series into a monthly average.
+
+### Release registries and assets
+
+`boe_release_registry()` is available offline. A release-asset read is only
+valid after a verified `inst/extdata/release-assets.rds` snapshot has been
+generated and committed; version 0.1.6 does not contain that file. Until that
+is resolved, `boe_release_assets()` and
+`read_boe_release_asset()` fail early with a typed `readboe_config` condition
+rather than browsing an unpinned live page.
+
+```{r releases-workflow, eval=FALSE}
+boe_release_registry()
+
+# After a verified release-assets snapshot is present:
+assets <- boe_release_assets(
+  family = "international_reserves",
+  file_type = "xlsx"
+)
+raw <- read_boe_release_asset(assets$url[[1]], parse = "raw")
+workbook <- read_boe_release_asset(assets$url[[1]], parse = "workbook")
+```
+
+Raw bytes are the fallback for heterogeneous official formats. Lossless
+worksheet parsing is intentionally limited to XLS/XLSX.
+
+## Network, deadlines, cache, and replay
+
+Network readers use public Bank endpoints and require no credentials. They:
+
+* use HTTPS and an allowlist of Bank of England hosts;
+* apply a caller-owned absolute deadline across retries and parsing;
+* enforce response, row, archive-member, workbook, cell, and output bounds;
+* retry only transient failures with bounded attempts; and
+* clean temporary files after parsing.
+
+Success responses are cached under
+`tools::R_user_dir("readboe", "cache")` by default. Cache entries are
+hash-checked, TTL-bound, atomically written, pruned by entry count and total
+bytes, and use only that managed location unless the caller explicitly
+supplies another `cache_dir`. Set
+`cache_only = TRUE` to replay an existing successful response without network
+access; set `refresh = TRUE` to bypass a usable entry. `boe_cache_clear()`
+removes only hash-named `readboe` entries in the directory supplied by the
+caller.
+
+For an application, pass one deadline through a workflow and retain the
+provenance object with the result:
+
+```r
+deadline <- boe_deadline(60)
+# result <- read_boe_series("IUDBEDR", deadline = deadline)
+# replay <- read_boe_series("IUDBEDR", deadline = deadline, cache_only = TRUE)
+# boe_provenance(replay)
+```
+
+## Scope and limitations
+
+The bundled catalogue provides the audited identities linked from the
+represented Bankstats page. At the snapshot date, 5,261 unique identities were
+linked from the current Bankstats page, of which 5,252 passed the canonical
+metadata and identity checks. Nine page links were excluded by the audit. Of
+the 5,252 catalogue rows, 5,008 have an exact current-workbook occurrence and
+244 are canonical-history-only; the latter remain valid for `history =
+"full"`. The official current page exposes no historical bulk-ZIP archive, so
+the workbook route is a rolling publication view.
+
+Additional scope boundaries are:
+
+* callers may request a known non-catalogued IADB identifier directly, while
+  browse results remain scoped to the authenticated snapshot;
+* dates are filtered inclusively, and month/quarter/year workbook labels retain
+  explicit period starts and their official precision;
+* official missing, suppressed, provisional, confidential, duplicate, and
+  revision fields are retained rather than normalised away;
+* aggregation, interpolation, gap filling, seasonal adjustment, and identity
+  inference remain explicit downstream choices; and
+* yield curves and downloaded release files remain subject to their source
+  page's methodology, revisions, disclaimers, and reuse terms.
+
+In version 0.1.6, the release-asset snapshot is missing, as described in
+[Release registries and assets](#release-registries-and-assets). This is a
+publication-readiness issue, not a reason to silently substitute a live,
+unpinned page.
+
+## Troubleshooting
+
+Errors and warnings are typed so callers can make a deliberate retry, fallback,
+or remediation decision. Inspect `class(condition)` and `conditionMessage(e)`.
+
+| Condition | Typical cause | What to check |
+|:--|:--|:--|
+| `readboe_config` | Invalid argument, unsupported source combination, or missing release snapshot | Check argument choices, date order, `scope`/`frequency`, and required bundled files. |
+| `readboe_bounds` | Response, row, cell, member, or output limit exceeded | Narrow the request or raise the relevant bound deliberately. |
+| `readboe_identity_mismatch` | Requested ID/URL/member or authenticated snapshot does not match the declared identity | Rebuild from the exact catalogue/registry row; do not bypass the identity check. |
+| `readboe_upstream_unavailable` | A page-listed identity has no exact current workbook cell | Use `history = "full"` or the canonical IADB reader. |
+| `readboe_timeout` / `readboe_rate_limit` | Deadline expired or the upstream service asked the client to slow down | Retry later with a fresh deadline; use a cache-only replay when available. |
+| `readboe_transport` | HTTPS, redirect, HTTP status, or connection failure | Check the official endpoint and network policy; credentials are not a fix. |
+| `readboe_parse` / `readboe_schema_drift` | Malformed or changed upstream XML, CSV, ZIP, or workbook | Preserve the error and source identity for diagnosis; do not treat a partial parse as valid. |
+| `readboe_cache_miss` / `readboe_cache_corruption` | No matching replay entry or a hash/identity check failed | Re-fetch when permitted, or clear only the affected managed cache entries. |
+
+## Source rights, citation, and independence
+
+Package code and package-authored documentation: MIT License, copyright
+© 2026 Chartwell Macro; see
+[`LICENSE`](https://github.com/chartwell-macro/readboe/blob/main/LICENSE). MIT applies
+to that software, not
+automatically to Bank-derived catalogue metadata, receipts, or downloaded
+official assets.
+
+Bundled catalogue files under `inst/extdata/` are derived from Bank of England
+Database/statistics pages. Reuse must follow the Bank's applicable legal terms
+and any third-party terms. The Bank's legal notice identifies special handling
+for selected exchange-rate series and for monetary-financial-institution data
+relating to the Isle of Man, Guernsey, and Jersey. SONIA and SONIA Compounded
+Index material requires the Bank-prescribed OGL v3.0 attribution and trademark
+acknowledgement. Check
+[`boe_rights()`](https://github.com/chartwell-macro/readboe/blob/main/man/boe_rights.Rd)
+and the
+[Bank of England Legal page](https://www.bankofengland.co.uk/legal) before
+redistributing source data. The package does not claim ownership of those
+materials.
+
+`readboe` is an independent client and is not endorsed by, affiliated with, or
+sponsored by the Bank of England. Source links are provided for attribution
+and verification. The package's primary author and maintainer is Chartwell Macro. For
+reproducibility, cite the package version, the exact
+series or asset identity, retrieval date, and `boe_provenance()` receipt. See
+[`NEWS.md`](https://github.com/chartwell-macro/readboe/blob/main/NEWS.md) for changes
+and
+[`inst/CITATION`](https://github.com/chartwell-macro/readboe/blob/main/inst/CITATION),
+or use GitHub's
+[`CITATION.cff`](https://github.com/chartwell-macro/readboe/blob/main/CITATION.cff).
+
+## Contributing and support
+
+Email bug reports and reproducible upstream/schema observations to
+[chartwellmacro@gmail.com](mailto:chartwellmacro@gmail.com). Include
+the package version, R version/platform, exact function arguments, condition
+class/message, source identity, and the provenance receipt where possible;
+remove credentials and unrelated data before posting. Pull requests should
+preserve raw-source fields, typed conditions, bounds, cache behaviour, and the
+offline tests. Start with
+[`CONTRIBUTING.md`](https://github.com/chartwell-macro/readboe/blob/main/CONTRIBUTING.md),
+[`NEWS.md`](https://github.com/chartwell-macro/readboe/blob/main/NEWS.md), the
+[`docs/coverage-matrix.csv`](https://github.com/chartwell-macro/readboe/blob/main/docs/coverage-matrix.csv),
+and the repository's source before proposing a new surface or transformation.

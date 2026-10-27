@@ -1,0 +1,201 @@
+---
+title: "Troubleshooting and integration"
+author: "Chartwell Macro"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Troubleshooting and integration}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4,
+  out.width = "100%"
+)
+```
+
+`readboe` is designed to fail closed when an identity, schema, size bound,
+deadline, or transport contract is not satisfied. This article gives a small
+offline preflight and shows how to handle the typed conditions in an
+integration without turning an upstream failure into an apparently valid
+dataset.
+
+## Run a deterministic preflight
+
+Before a scheduled retrieval, inspect the package version and the catalogue
+manifest. The manifest is a one-row data frame and records the snapshot scope
+and build time. `catalogue_complete_within_scope` means complete within that
+declared scope; it is not a claim that every Bank of England statistical
+identifier exists in the snapshot.
+
+```{r preflight}
+library(readboe)
+
+manifest <- boe_catalogue_manifest()
+stopifnot(
+  nrow(manifest) == 1L,
+  isTRUE(manifest$catalogue_complete_within_scope[[1L]])
+)
+
+list(
+  package_version = as.character(utils::packageVersion("readboe")),
+  snapshot_generated_at_utc = manifest$generated_at_utc[[1L]],
+  snapshot_scope = manifest$catalogue_scope[[1L]],
+  catalogue_rows = manifest$catalogue_rows[[1L]],
+  canonical_history_series = manifest$canonical_history_series[[1L]]
+)
+```
+
+Keep that manifest row with any output. It lets a later reader distinguish a
+changed upstream release from a changed analysis.
+
+## Typed conditions and common causes
+
+Contract failures raised by `readboe` inherit from `readboe_error` and have a
+specific `readboe_*` class. Base R may still raise ordinary errors for
+programming mistakes outside those validated contracts. Handle only the class
+you can recover from and let unexpected conditions surface. The following
+examples are fully offline.
+
+```{r config-condition}
+bad_limit <- tryCatch(
+  boe_catalogue(limit = 0L),
+  error = identity
+)
+c(class = class(bad_limit)[[1L]], message = conditionMessage(bad_limit))
+```
+
+The input error is `readboe_config`. An exact file reader also checks identity
+before doing I/O:
+
+```{r identity-condition}
+bad_url <- "https://www.bankofengland.co.uk/-/media/boe/files/statistics/not-a-pinned-asset.zip"
+bad_asset <- tryCatch(
+  read_boe_bankstats(bad_url),
+  error = identity
+)
+c(class = class(bad_asset)[[1L]], message = conditionMessage(bad_asset))
+```
+
+Typical recovery guidance is:
+
+| Condition class | Meaning | Safe response |
+|:--|:--|:--|
+| `readboe_config` | Invalid argument, unavailable optional snapshot, or unsupported mode | Correct the request or surface the package limitation |
+| `readboe_cache_miss` | `cache_only = TRUE` found no successful matching entry | Decide whether a network fetch is allowed |
+| `readboe_cache_corruption` | Cache bytes or identity do not verify | Remove only the affected cache entry or clear the managed cache, then retry |
+| `readboe_identity_mismatch` | Requested or returned identity differs from the exact contract | Stop and investigate; do not relabel the result |
+| `readboe_schema_drift` | Upstream structure is no longer the documented shape | Stop, retain the error and source context, and review the package/source |
+| `readboe_bounds` | Byte, row, archive, workbook, or output bound was exceeded | Narrow the request or deliberately raise a documented bound |
+| `readboe_timeout` / `readboe_rate_limit` / `readboe_transport` | Deadline or HTTP/network failure | Retry only within a caller-owned policy and deadline |
+
+For example, an invalid IADB identifier is rejected before a request is made:
+
+```{r invalid-id}
+bad_id <- tryCatch(
+  read_boe_series("not a valid id"),
+  error = identity
+)
+c(class = class(bad_id)[[1L]], message = conditionMessage(bad_id))
+```
+
+Do not catch every error and return an empty data frame. That changes a typed
+failure into a silent data-quality failure.
+
+## Cache-first, bounded integration
+
+Use the offline catalogue to choose an exact identity, then make cache policy,
+request bounds, and the absolute deadline explicit. `cache_only = TRUE` is a
+useful first pass for scheduled jobs that must be reproducible without network
+access. The code below is shown but not evaluated because the fallback branch
+may contact the live IADB.
+
+```{r cache-first, eval=FALSE}
+candidate <- boe_catalogue(query = "SONIA", limit = 1L)
+series_id <- candidate$series_id[[1L]]
+cache_dir <- file.path(tempdir(), "readboe-integration-cache")
+
+observations <- tryCatch(
+  read_boe_series(
+    series_id,
+    from = "2024-01-01",
+    to = "2024-12-31",
+    format = "xml",
+    cache_only = TRUE,
+    cache_dir = cache_dir,
+    max_bytes = 25 * 1024^2,
+    max_observations = 100000L,
+    deadline = boe_deadline(seconds = 30)
+  ),
+  readboe_cache_miss = function(e) {
+    read_boe_series(
+      series_id,
+      from = "2024-01-01",
+      to = "2024-12-31",
+      format = "xml",
+      cache_dir = cache_dir,
+      max_bytes = 25 * 1024^2,
+      max_observations = 100000L,
+      deadline = boe_deadline(seconds = 30)
+    )
+  }
+)
+
+stopifnot(inherits(observations, "boe_iadb"))
+receipt <- boe_provenance(observations)
+```
+
+The deadline is one absolute point shared by transport retries and parsing;
+retrying does not silently extend the caller's time budget. The reader uses
+HTTPS Bank of England hosts, bounded responses, and a success-only cache. The
+default cache is under `tools::R_user_dir("readboe", "cache")`; passing an
+explicit directory makes the side effect visible and testable.
+
+## Preserve the result contract downstream
+
+For XML results, keep the `metadata` and `observations` components together
+until you have copied the fields needed by your analysis. In particular:
+
+* keep `value_raw` and its numeric companion rather than overwriting the raw
+  marker or converting suppressed values to zero;
+* retain provisional, confidentiality, footnote, `last_updated`, and
+  `last_revised` fields when they matter to your use case;
+* retain `boe_provenance(x)` and the manifest row with the derived output;
+* preserve exact source/member/sheet/row/column identity for workbook and
+  yield-curve readers; and
+* document any aggregation, filtering, imputation, or unit conversion you
+  perform after the reader returns.
+
+The package does not infer headers, collapse duplicates, drop missing markers,
+or silently select a replacement series. Those choices belong in a separately
+audited downstream transformation.
+
+## Cleaning up a temporary cache in a test or vignette
+
+The package never needs a write to the working directory. For a short-lived
+test or example, use `tempdir()` and clean the directory explicitly:
+
+```{r cleanup}
+temporary_cache <- file.path(tempdir(), "readboe-troubleshooting-cache")
+dir.create(temporary_cache, recursive = TRUE, showWarnings = FALSE)
+boe_cache_clear(temporary_cache)
+unlink(temporary_cache, recursive = TRUE)
+```
+
+For a long-lived application cache, use a managed application directory or an
+explicit project directory with an agreed retention policy. Never put
+credentials in URLs, cache entries, or issue reports.
+
+## When an upstream page changes
+
+If a request fails with `readboe_schema_drift`, `readboe_identity_mismatch`, or
+`readboe_config` because a pinned optional snapshot is unavailable, retain the
+condition message, source URL, package version, and manifest row in your
+report. Do not bypass the exact-identity check by calling an unregistered URL.
+Review the Bank's current source terms and the package's support email before
+adapting a pipeline. `boe_rights()` lists the official legal, IADB semantic,
+and yield-curve methodology links that should accompany a data-quality report.

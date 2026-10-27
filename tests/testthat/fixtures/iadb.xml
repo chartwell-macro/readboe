@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<Envelope xmlns="http://www.gesmes.org/xml/2002-08-01">
+  <Cube xmlns="https://example.invalid/agg_series" SCODE="TEST001" DESC="Test rate" COUNTRY="UK" CONCAT="Test rate concatenated">
+    <Cube FREQ_NAME="Monthly" FREQ_CODE="M" FREQ_ORD="3"/>
+    <SERIES_COM>Series note</SERIES_COM>
+    <Cube SERIES_DEF="Definition" DEF_LOC="https://www.bankofengland.co.uk/notes/test"/>
+    <Cube CAT_NAME="TYPE" CAT_VAL="R" VAL_DESC="Rate" CAT_ORD="1"/>
+    <Cube FIRST_OBS="2024-01-31" LAST_OBS="2024-02-29"/>
+    <Cube TIME="2024-01-31" OBS_VALUE="1.25" OBS_CONF="N" LAST_UPDATED="2024-02-01 09:30:00"><OBS_COM>Observation note</OBS_COM></Cube>
+    <Cube TIME="2024-02-29" OBS_VALUE=".." PROV_VALUE="1.50" OBS_CONF="Y" LAST_REVISED="2024-03-01 09:30:00"/>
+  </Cube>
+  <Cube xmlns="https://example.invalid/agg_series" SCODE="TEST002" DESC="Test amount" COUNTRY="" CONCAT="Test amount">
+    <Cube FREQ_NAME="Annual" FREQ_CODE="A" FREQ_ORD="6"/>
+    <Cube FIRST_OBS="2023-12-31" LAST_OBS="2023-12-31"/>
+    <Cube TIME="2023-12-31" OBS_VALUE="2,000" OBS_CONF="N" LAST_UPDATED="2024-01-02 09:30:00"/>
+  </Cube>
+</Envelope>

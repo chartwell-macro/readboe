@@ -1,0 +1,254 @@
+---
+title: "Data sources, snapshots, and provenance"
+author: "Chartwell Macro"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Data sources, snapshots, and provenance}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4,
+  out.width = "100%"
+)
+```
+
+This article describes what `readboe` knows before it goes online and what a
+retrieval adds to that record. The examples use the package's committed
+snapshots and registries, so they are deterministic and do not require a live
+Bank of England connection.
+
+## Coverage and source map
+
+| Source surface | Offline discovery | Network reader | Main identity to retain |
+|:--|:--|:--|:--|
+| Bankstats-linked IADB series and revisions | `boe_catalogue()` | `read_boe_series()`, `boe_series_metadata()`, `boe_series_updates()` | IADB `series_id`, date range, format, update mode |
+| Bankstats catalogue and bulk workbooks | `boe_catalogue()`, `boe_bankstats_assets()` | `read_boe_bankstats()`, `read_boe_bankstats_series()` | series ID plus table/member and workbook coordinates |
+| Official Bank Rate and fixed rate identities | `boe_rate_series()` | `boe_bank_rate_history()`; registered identities through `read_boe_series()` | Bank Rate event period/precision or exact IADB `series_id` |
+| Fitted yield curves | `boe_yield_assets()` | `read_boe_yield_curve()` | asset family, member, sheet, row, and column |
+| Statistical and research release families | `boe_release_registry()` and, when present, `boe_release_assets()` | `read_boe_release_asset()` | release family and exact asset URL |
+
+The offline calls do not infer a result from a current web page. They read
+hash-authenticated package data and return the snapshot's exact rows.
+
+The 3 August 2026 snapshot covers 5,252 IADB-validated identities across 60
+current Bankstats tables. All carry series-specific canonical bounds; the
+snapshot's overall history envelope is June 1969 to July 2026. It spans seven
+subject sections: money and lending; monetary-financial-institution balance
+sheets, income, and expenditure; deposits and lending; interest and exchange
+rates; public-sector debt and money-market operations; capital issuance; and
+financial derivatives. Frequencies comprise 4,355 monthly, 845 quarterly, 21
+annual, 21 weekly, and 10 daily identities.
+
+The current Bankstats ZIP has 64 workbook members: 5,008 catalogue identities
+have an exact workbook cell, while 244 retain the canonical full-history route
+only. The separate Bank Rate workbook begins in October 1694. The yield
+registry covers 11 latest/archive file identities across five curve families,
+and the release registry names 14 families; see the README's
+[coverage table](https://github.com/chartwell-macro/readboe#coverage-at-a-glance) for
+their historical boundaries and current release-asset limitation.
+
+## Catalogue scope and receipts
+
+The manifest is the first object to inspect when a reproducible workflow starts.
+It states the snapshot scope, build time, row counts, source URLs, and hashes
+of the catalogue and its receipts. The snapshot date is data, not the current
+clock, and should be recorded alongside results.
+
+```{r manifest}
+library(readboe)
+
+manifest <- boe_catalogue_manifest()
+manifest[, c(
+  "generated_at_utc", "catalogue_scope", "catalogue_complete_within_scope",
+  "catalogue_rows", "metadata_rows", "canonical_history_series",
+  "bankstats_workbook_members"
+)]
+```
+
+The build receipts provide the source-page retrieval evidence used to create
+the snapshot. They are not a replacement for a retrieval receipt from a later
+live data request.
+
+```{r receipts}
+search_receipt <- boe_catalogue_receipts(kind = "search", limit = 1L)
+search_receipt[, c(
+  "surface", "catalogue_scope", "retrieved_at", "status", "raw_bytes",
+  "raw_sha256", "link_rows", "retrievable_series"
+)]
+```
+
+Network readers accept a caller-owned absolute deadline. Constructing one is
+an offline operation, and the same object can be passed through a multi-step
+retrieval workflow so retries cannot silently extend its time budget.
+
+```{r deadline}
+fixed_deadline <- boe_deadline(
+  at = as.POSIXct("2030-01-01 00:00:00", tz = "UTC")
+)
+c(class = class(fixed_deadline)[[1L]], deadline_utc = format(fixed_deadline, tz = "UTC"))
+```
+
+The package verifies the paired snapshot hash before returning the default
+catalogue or manifest. A hash mismatch, corrupt file, or schema mismatch is a
+typed `readboe_identity_mismatch`, `readboe_cache_corruption`, or
+`readboe_schema_drift` condition rather than a silently changed result.
+
+## Browse exact identities and facets
+
+Queries and facets are useful for a user interface or a review step before a
+network request. Here the query is deliberately small and the output is
+limited, while the facet counts describe every row surviving the filter.
+
+```{r browse}
+candidate <- boe_catalogue(query = "capital issuance", limit = 3L)
+candidate[, c("series_id", "displayed_code", "label", "frequency", "table_id")]
+
+facets <- boe_catalogue_facets(query = "capital issuance")
+facets[c("frequency", "section", "surface_membership")]
+```
+
+The `boe_catalogue_provenance` attribute on `candidate` includes the matched
+row count before `limit` was applied. The row values remain official labels and
+identifiers; `readboe` does not turn them into a guessed product or economic
+interpretation.
+
+## Bankstats and yield-curve registries
+
+Bankstats assets include exact URLs, file types, archive status, member names,
+and source hashes. Yield-curve assets distinguish the latest daily bundle from
+the archive families and mark that official files may be revised.
+
+```{r asset-registries}
+bankstats <- boe_bankstats_assets(limit = 1L)
+bankstats[, c(
+  "table_label", "url", "file_type", "archive", "member_count",
+  "source_page_url", "source_sha256"
+)]
+
+yields <- boe_yield_assets()
+with(yields, table(scope, frequency))
+```
+
+The registries are discovery and identity controls, not copies of the remote
+workbooks. A reader checks that the requested URL is an exact registered URL
+before downloading it. If a workbook or ZIP changes shape, bounded parsing
+fails with a typed condition instead of silently guessing headers or dropping
+cells.
+
+## Saved Inflation Report and Monetary Policy Report forecasts
+
+`boe_mpr_releases()`, `boe_mpr_assets()`, `boe_mpr_catalogue()` and
+`read_boe_mpr_forecasts()` use an authenticated saved numeric snapshot without
+network access or PDF tools. It preserves official forecast vintages,
+scenarios, annual/quarterly meanings, missing and censored tokens, source
+coordinates and revision receipts across the published archive. Explicit
+`boe_mpr_maintain()` checks new reports and historical revisions using official
+release dates; it stages source bodies temporarily and discards them by default.
+Ordinary reads never run maintenance. Forecast report Resources and any
+third-party inputs retain their applicable source notices; the Database OGL
+must not be assumed to apply.
+
+## Release families and an explicit missing-snapshot state
+
+`boe_release_registry()` is the affirmative list of audited release families.
+`boe_release_assets()` is intentionally separate: it is only available when a
+matching pinned asset snapshot has been packaged. The following check reports
+the current build's state without making a request. In a build where that
+snapshot is absent, the expected result is a `readboe_config` condition; this
+is an honest limitation rather than an inferred asset list.
+
+```{r release-registry}
+release_families <- boe_release_registry()
+release_families[, c("family", "label", "parser")]
+
+release_assets_status <- tryCatch(
+  {
+    assets <- boe_release_assets(limit = 1L)
+    sprintf("available (%d row shown)", nrow(assets))
+  },
+  readboe_config = function(e) paste("unavailable in this build:", conditionMessage(e)),
+  error = function(e) paste("unexpected error:", conditionMessage(e))
+)
+release_assets_status
+```
+
+Do not use a release landing page as if it were an asset receipt. When the
+asset snapshot is available, pass an exact URL from `boe_release_assets()` to
+`read_boe_release_asset()` and retain the returned provenance.
+
+## Cache and exact provenance
+
+Successful remote responses are cached as success entries only. The default
+cache is under `tools::R_user_dir("readboe", "cache")`; a workflow can pass an
+explicit directory, such as a project-managed or temporary directory. The
+cache contains raw bytes plus identity, response metadata, timestamps, and a
+SHA-256 digest. It is not a general-purpose download directory.
+
+This example exercises the offline cache contract in a temporary directory.
+`cache_only = TRUE` never falls back to a network request, so an empty cache
+produces a typed `readboe_cache_miss` condition.
+
+```{r cache-miss}
+cache_dir <- file.path(tempdir(), "readboe-data-sources-cache")
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+removed <- boe_cache_clear(cache_dir)
+
+asset_url <- boe_yield_assets()$url[[1L]]
+cache_miss <- tryCatch(
+  boe_download_asset(
+    asset_url,
+    cache_only = TRUE,
+    cache_dir = cache_dir
+  ),
+  readboe_cache_miss = identity
+)
+
+c(
+  removed_entries = removed,
+  condition = class(cache_miss)[[1L]],
+  message = conditionMessage(cache_miss),
+  cache_files = length(list.files(cache_dir, pattern = "[.]rds$"))
+)
+```
+
+With network access, the successful path is:
+
+```{r provenance-live, eval=FALSE}
+raw <- boe_download_asset(
+  asset_url,
+  deadline = boe_deadline(seconds = 30),
+  cache_dir = cache_dir
+)
+receipt <- boe_provenance(raw)
+receipt[c(
+  "source_identity", "canonical_url", "final_url", "retrieved_at",
+  "raw_bytes", "raw_sha256", "etag", "last_modified", "from_cache",
+  "transforms", "package", "package_version"
+)]
+```
+
+`boe_provenance()` returns `NULL` for an object that is not a successful
+`readboe` result with a provenance attribute. Do not manufacture a receipt for
+hand-built data: preserve the package's receipt with the result you actually
+used, and record any downstream transformations separately.
+
+## Rights and attribution
+
+The package surfaces the official notices that should accompany downstream
+data. They are intentionally links and instructions, not a claim that the
+package can grant reuse rights.
+
+```{r rights}
+boe_rights()
+```
+
+Review the Bank's current legal terms, IADB help and data semantics, and the
+yield-curve methodology/disclaimer before redistributing observations or
+derived products. Preserve official identifiers, footnotes, provisional and
+confidentiality markers, revision fields, and source links where relevant.

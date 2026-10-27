@@ -1,0 +1,32 @@
+readboe includes MIT-licensed package software authored by Chartwell Macro; see
+LICENSE and the installed COPYRIGHTS file (source inst/COPYRIGHTS). The MIT
+licence does not relicense Bank-derived
+catalogue metadata, provenance receipts, or runtime-downloaded official
+assets. Their reuse is subject to the Bank of England's applicable terms and
+any third-party component rights. Preserve that COPYRIGHTS notice and the
+source provenance when redistributing bundled metadata.
+
+For SONIA and SONIA Compounded Index material, retain this attribution:
+
+SONIA and/or SONIA Compounded Index data licensed under the Open Government Licence v3.0 and copyright the Governor and Company of the Bank of England.
+The trade marks “Bank of England” and “SONIA” are registered trade marks of the Bank of England.
+
+This attribution applies to the monthly SONIA documentation replay fixture
+under `extdata/sonia/` and to the chart derived from
+that fixture.
+
+Selected exchange-rate data and series may be excluded from the OGL because
+they are reproduced under third-party licences. Data relating to monetary
+financial institutions in the Isle of Man, Guernsey, and Jersey is supplied
+under licences from the respective institutions. Consult the current Bank of
+England legal terms at https://www.bankofengland.co.uk/legal and the exact
+source page before reusing those components or any downloaded asset.
+
+Inflation Report and Monetary Policy Report observations bundled under
+extdata/mpr-forecasts.rds are pre-extracted structured values and provenance,
+not MIT-licensed package software. Their source report Resources and any
+third-party inputs remain subject to the Bank's applicable legal terms and
+component notices. Database OGL terms must not be assumed to cover them.
+The publisher has confirmed permission to redistribute this bundled snapshot.
+This does not grant a blanket licence for other uses or third-party material. No original report PDF, HTML, workbook or ZIP is bundled for
+this forecast family; temporary updater source bodies are discarded by default.

@@ -1,0 +1,116 @@
+# Public package documentation and source links.
+url: https://chartwell-macro.github.io/readboe/
+
+repo:
+  url:
+    home: https://github.com/chartwell-macro/readboe/
+    source: https://github.com/chartwell-macro/readboe/blob/main/
+    issue: mailto:chartwellmacro@gmail.com
+    user: https://github.com/
+  branch: main
+
+lang: en
+
+development:
+  mode: auto
+
+template:
+  bootstrap: 5
+  theme: a11y-light
+
+navbar:
+  structure:
+    left: [reference, articles, news]
+    right: [search, github]
+  components:
+    github:
+      icon: fa-github
+      href: https://github.com/chartwell-macro/readboe
+      aria-label: View readboe source code on GitHub
+
+reference:
+  - title: Discover Bankstats
+    desc: Find exact current Bankstats identities and inspect the bundled catalogue.
+    contents:
+      - boe_catalogue
+      - boe_catalogue_facets
+      - boe_catalogue_manifest
+      - boe_catalogue_receipts
+      - boe_bankstats_assets
+  - title: Read IADB data
+    desc: Retrieve canonical XML or compatibility CSV observations and revision metadata.
+    contents:
+      - read_boe_series
+      - boe_series_metadata
+      - boe_series_updates
+      - boe_rate_series
+  - title: Read Bankstats workbooks
+    desc: Read current workbook cells or canonical full-history series with provenance.
+    contents:
+      - read_boe_bankstats
+      - read_boe_bankstats_series
+  - title: Rates and yield curves
+    desc: Work with the official Bank Rate history and fitted yield-curve assets.
+    contents:
+      - boe_bank_rate_history
+      - boe_yield_assets
+      - read_boe_yield_curve
+  - title: Release-family registry
+    desc: Inspect the audited registry; exact assets require a verified pinned snapshot.
+    contents:
+      - boe_release_registry
+      - boe_release_assets
+      - read_boe_release_asset
+  - title: Inflation Report and Monetary Policy Report forecasts
+    desc: Read saved official forecast vintages and explicitly maintain new releases and revisions.
+    contents:
+      - boe_mpr_assets
+      - boe_mpr_calendar
+      - boe_mpr_catalogue
+      - boe_mpr_maintain
+      - boe_mpr_maintenance_status
+      - boe_mpr_releases
+      - boe_mpr_snapshot_status
+      - boe_mpr_update
+      - read_boe_mpr_forecasts
+      - read_boe_mpr_forecasts_raw
+  - title: Reproducibility and source notices
+    desc: Bound requests, replay cache entries, inspect provenance, and review source terms.
+    contents:
+      - boe_deadline
+      - boe_download_asset
+      - boe_provenance
+      - boe_cache_clear
+      - boe_rights
+  - title: Supporting documentation
+    desc: Package-level context and the print method for canonical IADB results.
+    contents:
+      - readboe-package
+      - print.boe_iadb
+
+articles:
+  - title: Getting started
+    navbar: ~
+    contents:
+      - getting-started
+  - title: Data sources, snapshots, and provenance
+    navbar: Sources
+    contents:
+      - data-sources
+  - title: Troubleshooting and integration
+    navbar: Troubleshooting
+    contents:
+      - troubleshooting
+
+toc:
+  depth: 2
+
+footer:
+  structure:
+    left: package
+    right: [legal, built_with]
+  components:
+    legal: >-
+      See [`boe_rights()`](https://github.com/chartwell-macro/readboe/blob/main/man/boe_rights.Rd)
+      for official-source notices and reuse guidance; review the linked terms
+      before redistribution.

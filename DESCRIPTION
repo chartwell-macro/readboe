@@ -1,0 +1,43 @@
+Package: readboe
+Title: Reproducible Access to Bank of England Statistical Data
+Version: 0.2.0
+Authors@R: person(
+    given = "Chartwell", family = "Macro",
+    email = "chartwellmacro@gmail.com",
+    role = c("aut", "cre", "cph")
+    )
+Description: Discovers, downloads, parses, and records provenance for official
+    Bank of England statistical data. It covers the Interactive Statistical
+    Database XML, CSV, and value-update interfaces, Bankstats bulk tables,
+    official Bank Rate history, fitted yield curves, an audited statistical
+    release registry, and saved Inflation Report and Monetary Policy Report
+    forecasts, scenarios, conditioning paths and published distributions.
+    Requests, caches, parsers, and snapshots use explicit bounds and preserve
+    official identifiers, missing-value markers, source notices and revisions.
+License: MIT + file LICENSE
+Copyright: file inst/COPYRIGHTS
+URL: https://chartwell-macro.github.io/readboe,
+    https://github.com/chartwell-macro/readboe
+BugReports: https://github.com/chartwell-macro/readboe/blob/main/SUPPORT.md
+Depends: R (>= 4.2.0)
+Imports:
+    digest,
+    httr2,
+    jsonlite,
+    readxl,
+    stats,
+    tools,
+    utils,
+    xml2
+Suggests:
+    ggplot2 (>= 3.4.0),
+    knitr,
+    openxlsx,
+    rmarkdown (>= 2.31),
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
+SystemRequirements: Poppler (pdftotext, only for explicit raw PDF extraction and updates)

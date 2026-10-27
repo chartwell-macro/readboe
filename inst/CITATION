@@ -1,0 +1,18 @@
+citHeader("To cite the readboe package in publications use:")
+
+bibentry(
+  bibtype = "Manual",
+  title = "readboe: Reproducible Access to Bank of England Statistical Data",
+  author = person(given = "Chartwell", family = "Macro"),
+  year = "2026",
+  note = "R package version 0.2.0",
+  url = "https://github.com/chartwell-macro/readboe",
+  key = "readboe"
+)
+
+citFooter(
+  "Package software is MIT-licensed and copyright Chartwell Macro. The package " ,
+  "retrieves material from Bank of England sources. See the " ,
+  "installed COPYRIGHTS file (source inst/COPYRIGHTS) for applicable " ,
+  "attribution and reuse terms."
+)

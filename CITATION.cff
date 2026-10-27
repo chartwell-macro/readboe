@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use readboe, please cite it using the metadata below."
+title: "readboe: Reproducible Access to Bank of England Statistical Data"
+type: software
+authors:
+  - given-names: "Chartwell"
+    family-names: "Macro"
+version: 0.2.0
+date-released: 2026-10-27
+license: MIT
+repository-code: "https://github.com/chartwell-macro/readboe"
+url: "https://github.com/chartwell-macro/readboe"
