@@ -63,6 +63,31 @@ boe_mpr_publication_pending <- function(entry) {
   grepl("to be published|will be published", heading, ignore.case = TRUE)
 }
 
+boe_mpr_windows_pids <- function() {
+  command <- file.path(Sys.getenv("SystemRoot", "C:/Windows"), "System32", "tasklist.exe")
+  output <- tryCatch(suppressWarnings(system2(command, c("/FO", "CSV", "/NH"),
+    stdout = TRUE, stderr = TRUE)), error = function(e) NULL)
+  if (!length(output) || !is.null(attr(output, "status"))) return(NULL)
+  rows <- tryCatch(utils::read.csv(text = output, header = FALSE,
+    colClasses = "character", check.names = FALSE), error = function(e) NULL)
+  if (is.null(rows) || !nrow(rows) || ncol(rows) != 5L ||
+      any(!grepl("^[0-9]+$", rows[[2L]]))) return(NULL)
+  as.double(rows[[2L]])
+}
+
+boe_mpr_process_alive <- function(pid, os_type = .Platform$OS.type) {
+  # A malformed or inaccessible owner is unknown, so keep its lock. In
+  # particular, pskill(signal = 0) TERMINATES processes on Windows.
+  if (!is.numeric(pid) || length(pid) != 1L || !is.finite(pid) ||
+      pid <= 0 || pid != trunc(pid) || pid > .Machine$integer.max) return(TRUE)
+  if (pid == Sys.getpid()) return(TRUE)
+  if (identical(os_type, "windows")) {
+    pids <- boe_mpr_windows_pids()
+    return(is.null(pids) || pid %in% pids)
+  }
+  isTRUE(tryCatch(tools::pskill(pid, signal = 0L), error = function(e) TRUE))
+}
+
 boe_mpr_lock <- function(data_dir, stale_after = 60, name = ".update-lock") {
   if (!name %in% c(".update-lock", ".maintenance-lock")) boe_abort("Unknown forecast writer lock.", "config")
   path <- file.path(data_dir, name); dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
@@ -70,7 +95,7 @@ boe_mpr_lock <- function(data_dir, stale_after = 60, name = ".update-lock") {
     owner <- boe_mpr_optional_rds(file.path(path, "owner.rds"))
     age <- as.numeric(difftime(Sys.time(), file.info(path)$mtime, units = "secs"))
     dead <- !is.null(owner) && identical(owner$host, Sys.info()[["nodename"]]) &&
-      !isTRUE(tryCatch(tools::pskill(owner$pid, signal = 0L), error = function(e) TRUE))
+      !boe_mpr_process_alive(owner$pid)
     if (is.finite(age) && age > stale_after && (dead || is.null(owner))) {
       quarantine <- tempfile(".stale-lock-", tmpdir = data_dir)
       if (file.rename(path, quarantine)) unlink(quarantine, recursive = TRUE)

@@ -1,5 +1,9 @@
 # readboe 0.2.0
 
+* Uses a read-only Windows process listing when checking writer-lock owners;
+  process signalling is reserved for POSIX liveness checks. Active or unknown
+  owners keep their locks, and confirmed abandoned locks remain recoverable.
+
 * Updates and maintenance now discard working source bodies by default while
   retaining numeric snapshots, validators and provenance. Cleanup runs under the
   writer lock on success, failure and graceful interrupt; recovered writers clear
